@@ -6,11 +6,17 @@ export interface BeamProperties {
   depth: number; // meters
   youngsModulus: number; // Pa
   density: number; // kg/m³
+  dampingRatio?: number; // Damping ratio (ζ), typically 0.01-0.05 for structures (optional)
 }
 
 export interface BeamResults {
   naturalFrequencies: number[]; // Hz
   modeShapes: ModeShape[];
+  flexuralRigidity: number; // EI in N·m²
+  massPerUnitLength: number; // m = ρA in kg/m
+  staticDeflection: StaticDeflection | null; // Static deflection under point load
+  dampingCoefficient: number | null; // c in N·s/m (null if not calculated)
+  dampedResponse: DampedResponse | null; // Damped vibration response (null if no damping)
 }
 
 export interface ModeShape {
@@ -18,6 +24,22 @@ export interface ModeShape {
   x: number[];
   w: number[];
   bL: number;
+}
+
+export interface StaticDeflection {
+  x: number[]; // Position along beam
+  y: number[]; // Deflection in meters
+  maxDeflection: number; // Maximum deflection in meters
+  maxDeflectionLocation: number; // Location of max deflection in meters
+}
+
+export interface DampedResponse {
+  time: number[]; // Time in seconds
+  displacement: number[]; // Displacement in meters
+  envelope: { time: number[]; upper: number[]; lower: number[] }; // Envelope curves
+  dampingRatio: number;
+  naturalFrequency: number; // Hz
+  dampedFrequency: number; // Hz
 }
 
 /**
@@ -168,6 +190,151 @@ function calculateModeShape(
 }
 
 /**
+ * Calculates static deflection under a point load at the free end (for cantilever) or center (for simply-supported)
+ */
+function calculateStaticDeflection(
+  beamType: BeamType,
+  properties: BeamProperties,
+  load: number = 1000 // Default point load in N
+): StaticDeflection | null {
+  const { length, width, depth, youngsModulus } = properties;
+  const I = (width * Math.pow(depth, 3)) / 12; // Moment of inertia
+  const EI = youngsModulus * I; // Flexural rigidity
+  
+  if (EI <= 0 || length <= 0) return null;
+  
+  const x: number[] = [];
+  const y: number[] = [];
+  const numPoints = 300; // More points for smoother curve
+  const dx = length / numPoints;
+  
+  let maxDeflection = 0;
+  let maxDeflectionLocation = 0;
+  
+  for (let i = 0; i <= numPoints; i++) {
+    const pos = i * dx;
+    x.push(pos);
+    let deflection = 0;
+    
+    switch (beamType) {
+      case 'cantilever': {
+        // Point load at free end: y(x) = (P/(6EI)) * (3Lx² - x³)
+        // Verified: y(0) = 0, y(L) = PL³/(3EI)
+        if (pos >= 0 && pos <= length) {
+          deflection = (load / (6 * EI)) * (3 * length * pos * pos - pos * pos * pos);
+        }
+        break;
+      }
+      case 'simply-supported': {
+        // Point load at center: y(x) = (P/(48EI)) * (3L²x - 4x³) for x ≤ L/2
+        // Verified: y(0) = 0, y(L/2) = PL³/(48EI), y(L) = 0
+        if (pos <= length / 2) {
+          deflection = (load / (48 * EI)) * (3 * length * length * pos - 4 * pos * pos * pos);
+        } else {
+          // Symmetric for x > L/2: y(x) = y(L-x)
+          const xSym = length - pos;
+          deflection = (load / (48 * EI)) * (3 * length * length * xSym - 4 * xSym * xSym * xSym);
+        }
+        break;
+      }
+      case 'fixed-fixed': {
+        // Point load at center: y(x) = (P/(192EI)) * (3L²x - 4x³) for x ≤ L/2
+        // For fixed-fixed, the formula is similar but with different coefficient
+        if (pos <= length / 2) {
+          deflection = (load / (192 * EI)) * (3 * length * length * pos - 4 * pos * pos * pos);
+        } else {
+          const xSym = length - pos;
+          deflection = (load / (192 * EI)) * (3 * length * length * xSym - 4 * xSym * xSym * xSym);
+        }
+        break;
+      }
+      case 'fixed-pinned': {
+        // Point load at center: approximate using similar formula
+        if (pos <= length / 2) {
+          deflection = (load / (96 * EI)) * (3 * length * length * pos - 4 * pos * pos * pos);
+        } else {
+          const xSym = length - pos;
+          deflection = (load / (96 * EI)) * (3 * length * length * xSym - 4 * xSym * xSym * xSym);
+        }
+        break;
+      }
+    }
+    
+    y.push(deflection);
+    
+    if (Math.abs(deflection) > Math.abs(maxDeflection)) {
+      maxDeflection = deflection;
+      maxDeflectionLocation = pos;
+    }
+  }
+  
+  return {
+    x,
+    y,
+    maxDeflection,
+    maxDeflectionLocation,
+  };
+}
+
+/**
+ * Calculates damped vibration response over time
+ * x(t) = A * e^(-ζω_n*t) * cos(ω_d*t + φ)
+ */
+function calculateDampedResponse(
+  naturalFrequency: number, // Hz
+  dampingRatio: number,
+  duration: number = 2.0, // seconds
+  initialAmplitude: number = 1.0 // meters
+): DampedResponse | null {
+  if (dampingRatio <= 0 || dampingRatio >= 1) return null; // Invalid damping ratio
+  
+  const omega_n = naturalFrequency * 2 * Math.PI; // Natural frequency in rad/s
+  const omega_d = omega_n * Math.sqrt(1 - dampingRatio * dampingRatio); // Damped frequency
+  const dampedFrequency = omega_d / (2 * Math.PI); // Damped frequency in Hz
+  
+  const time: number[] = [];
+  const displacement: number[] = [];
+  const envelopeTime: number[] = [];
+  const envelopeUpper: number[] = [];
+  const envelopeLower: number[] = [];
+  
+  const numPoints = 1000;
+  const dt = duration / numPoints;
+  
+  for (let i = 0; i <= numPoints; i++) {
+    const t = i * dt;
+    time.push(t);
+    
+    // Damped response: x(t) = A * e^(-ζω_n*t) * cos(ω_d*t)
+    const decay = Math.exp(-dampingRatio * omega_n * t);
+    const oscillation = Math.cos(omega_d * t);
+    const x = initialAmplitude * decay * oscillation;
+    
+    displacement.push(x);
+    
+    // Envelope curves: ±A * e^(-ζω_n*t)
+    if (i % 10 === 0) { // Sample envelope less frequently
+      envelopeTime.push(t);
+      envelopeUpper.push(initialAmplitude * decay);
+      envelopeLower.push(-initialAmplitude * decay);
+    }
+  }
+  
+  return {
+    time,
+    displacement,
+    envelope: {
+      time: envelopeTime,
+      upper: envelopeUpper,
+      lower: envelopeLower,
+    },
+    dampingRatio,
+    naturalFrequency,
+    dampedFrequency,
+  };
+}
+
+/**
  * Main function to calculate natural frequencies and mode shapes
  */
 export function calculateBeamAnalysis(
@@ -180,6 +347,10 @@ export function calculateBeamAnalysis(
   // Calculate geometric properties
   const A = width * depth; // Cross-sectional area
   const I = (width * Math.pow(depth, 3)) / 12; // Moment of inertia
+  
+  // Calculate key quantities
+  const flexuralRigidity = youngsModulus * I; // EI in N·m²
+  const massPerUnitLength = density * A; // m = ρA in kg/m
 
   // Solve characteristic equation
   const bLValues = solveCharacteristicEquation(beamType, numModes);
@@ -200,10 +371,51 @@ export function calculateBeamAnalysis(
       bL,
     };
   });
+  
+  // Calculate static deflection (under 1000N point load)
+  const staticDeflection = calculateStaticDeflection(beamType, properties, 1000);
+  
+  // Calculate damping coefficient if damping ratio is provided
+  // For beam: c ≈ 2ζω_n * m_per_unit_length (approximate for first mode)
+  let dampingCoefficient: number | null = null;
+  let dampedResponse: DampedResponse | null = null;
+  
+  if (properties.dampingRatio !== undefined && properties.dampingRatio > 0 && naturalFrequencies.length > 0) {
+    const omega1 = naturalFrequencies[0] * 2 * Math.PI; // Convert Hz to rad/s
+    const zeta = properties.dampingRatio; // Damping ratio
+    // For distributed system: c ≈ 2ζω_n * m (per unit length)
+    dampingCoefficient = 2 * zeta * omega1 * massPerUnitLength;
+    
+    // Calculate damped response for first mode
+    if (zeta > 0 && zeta < 1) {
+      // Adaptive duration: show at least 15 periods, but minimum 5 seconds
+      // For low frequencies, we need more time to see enough cycles
+      const period = 1 / naturalFrequencies[0]; // Period in seconds
+      const minDuration = 5.0; // Minimum 5 seconds
+      const periodsToShow = 15; // Show at least 15 periods
+      const adaptiveDuration = Math.max(periodsToShow * period, minDuration);
+      
+      // Also ensure we see decay: at least 3 time constants
+      // Time constant τ = 1/(ζω_n)
+      const timeConstant = 1 / (zeta * omega1);
+      const decayDuration = 3 * timeConstant;
+      
+      // Use the maximum of both requirements, but cap at 60 seconds for performance
+      const maxDuration = 60.0; // Maximum 60 seconds
+      const duration = Math.min(Math.max(adaptiveDuration, decayDuration, minDuration), maxDuration);
+      
+      dampedResponse = calculateDampedResponse(naturalFrequencies[0], zeta, duration, 1.0);
+    }
+  }
 
   return {
     naturalFrequencies,
     modeShapes,
+    flexuralRigidity,
+    massPerUnitLength,
+    staticDeflection,
+    dampingCoefficient,
+    dampedResponse,
   };
 }
 

@@ -8,7 +8,7 @@ interface BeamPropertiesFormProps {
 }
 
 export default function BeamPropertiesForm({ properties, onChange }: BeamPropertiesFormProps) {
-  const updateProperty = (key: keyof BeamProperties, value: number) => {
+  const updateProperty = (key: keyof BeamProperties, value: number | undefined) => {
     onChange({ ...properties, [key]: value });
   };
 
@@ -92,6 +92,31 @@ export default function BeamPropertiesForm({ properties, onChange }: BeamPropert
               Example: 7830 for steel
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-gray-200">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">Damping Properties</h3>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Damping Ratio (ζ) <span className="text-gray-400 font-normal">(optional)</span>
+          </label>
+          <input
+            type="number"
+            value={properties.dampingRatio ?? ''}
+            onChange={(e) => {
+              const value = e.target.value === '' ? undefined : parseFloat(e.target.value);
+              updateProperty('dampingRatio', value);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+            min="0"
+            max="1"
+            step="0.001"
+            placeholder="0.01 - 0.05 typical"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Typical values: 0.01-0.05 for structures (0.01 = 1% damping, 0.05 = 5% damping)
+          </p>
         </div>
       </div>
     </div>

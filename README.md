@@ -49,9 +49,50 @@ npm start
 
 ## Example Values
 
-For a steel beam:
-- Young's Modulus: `2.05e11` Pa (or `205000000000`)
-- Density: `7830` kg/m³
+### Material Properties
+
+Common engineering materials with their Young's Modulus (E) and Density (ρ):
+
+| Material | Young's Modulus (Pa) | Density (kg/m³) |
+|----------|---------------------|-----------------|
+| **Steel (AISI 1020)** | `2.10e11` (210,000,000,000) | `7850` |
+| **Aluminum (6061)** | `6.9e10` (69,000,000,000) | `2700` |
+| **Titanium (Ti-6Al-4V)** | `1.14e11` (114,000,000,000) | `4430` |
+| **Carbon Fiber (Typical)** | `1.50e11` (150,000,000,000) | `1600` |
+| **Stainless Steel (304)** | `1.93e11` (193,000,000,000) | `8000` |
+| **Brass** | `1.00e11` (100,000,000,000) | `8500` |
+| **Copper** | `1.20e11` (120,000,000,000) | `8960` |
+| **Concrete (Normal)** | `3.0e10` (30,000,000,000) | `2400` |
+| **Wood (Oak)** | `1.1e10` (11,000,000,000) | `750` |
+| **Polymer (ABS)** | `2.3e9` (2,300,000,000) | `1050` |
+
+### Common Beam Dimensions
+
+Example configurations for different applications:
+
+**Small Structural Element (e.g., Drone Arm)**
+- Length: `0.25` m
+- Width: `0.020` m
+- Depth: `0.004` m
+- Material: Aluminum (6061)
+
+**Machine Tool Component**
+- Length: `0.4` m
+- Width: `0.060` m
+- Depth: `0.020` m
+- Material: Steel (AISI 1020)
+
+**Bridge/Structural Member**
+- Length: `2.0` m
+- Width: `0.150` m
+- Depth: `0.030` m
+- Material: Wood (Oak)
+
+### Quick Reference Values
+
+For a typical steel beam:
+- Young's Modulus: `2.10e11` Pa (or `210000000000`)
+- Density: `7850` kg/m³
 
 ## Technical Details
 

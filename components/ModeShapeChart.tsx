@@ -228,14 +228,14 @@ export default function ModeShapeChart({ modeShapes }: ModeShapeChartProps) {
 
   if (chartData.length === 0) {
     return (
-      <div className="w-full h-[500px] bg-white rounded-lg shadow-sm p-4 flex items-center justify-center">
+      <div className="w-full h-[500px] p-4 flex items-center justify-center">
         <p className="text-gray-500">No data to display</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-[500px] bg-white rounded-lg shadow-sm p-4">
+    <div className="w-full h-[500px] p-4">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-semibold text-gray-800">Mode Shapes</h3>
         <button
